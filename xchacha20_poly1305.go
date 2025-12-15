@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 
+	"github.com/awnumar/memguard"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -13,24 +14,36 @@ type Encryptor interface {
 }
 
 type XChaCha20Poly1305Encryptor struct {
-	encryptedKey []byte
-	loadedKey    *LoadedKey
+	keyEnclave *memguard.Enclave
 }
 
-func NewXChaCha20Poly1305Encryptor(encryptedKey []byte, loadedKey *LoadedKey) *XChaCha20Poly1305Encryptor {
-	return &XChaCha20Poly1305Encryptor{
-		encryptedKey: encryptedKey,
-		loadedKey:    loadedKey,
-	}
-}
-
-func (e *XChaCha20Poly1305Encryptor) Encrypt(plaintext []byte) ([]byte, error) {
-	k, err := e.loadedKey.Decrypt(e.encryptedKey)
+func NewXChaCha20Poly1305Encryptor(encryptedKey []byte, loadedKey *LoadedKey) (*XChaCha20Poly1305Encryptor, error) {
+	k, err := loadedKey.Decrypt(encryptedKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypting XChaCha20-Poly1305 key: %w", err)
 	}
+	defer func() {
+		for i := range k {
+			k[i] = 0
+		}
+	}()
 
-	aead, err := chacha20poly1305.NewX(k)
+	lb := memguard.NewBufferFromBytes(k)
+	defer lb.Destroy()
+
+	return &XChaCha20Poly1305Encryptor{
+		keyEnclave: lb.Seal(),
+	}, nil
+}
+
+func (e *XChaCha20Poly1305Encryptor) Encrypt(plaintext []byte) ([]byte, error) {
+	lb, err := e.keyEnclave.Open()
+	if err != nil {
+		return nil, fmt.Errorf("opening key enclave: %w", err)
+	}
+	defer lb.Destroy()
+
+	aead, err := chacha20poly1305.NewX(lb.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("creating XChaCha20-Poly1305 cipher: %w", err)
 	}
@@ -47,12 +60,13 @@ func (e *XChaCha20Poly1305Encryptor) Encrypt(plaintext []byte) ([]byte, error) {
 }
 
 func (e *XChaCha20Poly1305Encryptor) Decrypt(ciphertext []byte) ([]byte, error) {
-	k, err := e.loadedKey.Decrypt(e.encryptedKey)
+	lb, err := e.keyEnclave.Open()
 	if err != nil {
-		return nil, fmt.Errorf("decrypting XChaCha20-Poly1305 key: %w", err)
+		return nil, fmt.Errorf("opening key enclave: %w", err)
 	}
+	defer lb.Destroy()
 
-	aead, err := chacha20poly1305.NewX(k)
+	aead, err := chacha20poly1305.NewX(lb.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("creating XChaCha20-Poly1305 cipher: %w", err)
 	}
