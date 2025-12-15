@@ -13,7 +13,7 @@ type AES256GCMEncryptor struct {
 	keyEnclave *memguard.Enclave
 }
 
-func NewAES256GCMEncryptor(encryptedKey []byte, loadedKey *LoadedKey) (*AES256GCMEncryptor, error) {
+func NewAES256GCMEncryptor(encryptedKey []byte, loadedKey KeyDecryptor) (*AES256GCMEncryptor, error) {
 	k, err := loadedKey.Decrypt(encryptedKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypting AES-256-GCM key: %w", err)

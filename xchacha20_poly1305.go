@@ -13,11 +13,15 @@ type Encryptor interface {
 	Decrypt(ciphertext []byte) (plaintext []byte, err error)
 }
 
+type KeyDecryptor interface {
+	Decrypt(ciphertext []byte) ([]byte, error)
+}
+
 type XChaCha20Poly1305Encryptor struct {
 	keyEnclave *memguard.Enclave
 }
 
-func NewXChaCha20Poly1305Encryptor(encryptedKey []byte, loadedKey *LoadedKey) (*XChaCha20Poly1305Encryptor, error) {
+func NewXChaCha20Poly1305Encryptor(encryptedKey []byte, loadedKey KeyDecryptor) (*XChaCha20Poly1305Encryptor, error) {
 	k, err := loadedKey.Decrypt(encryptedKey)
 	if err != nil {
 		return nil, fmt.Errorf("decrypting XChaCha20-Poly1305 key: %w", err)
